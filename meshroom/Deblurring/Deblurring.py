@@ -8,7 +8,7 @@ from meshroom.core.utils import VERBOSE_LEVEL
 # models paths
 FMANET_MODEL_PATH = os.getenv('FMANET_MODEL_PATH')
 
-class DebluringNodeSize(desc.MultiDynamicNodeSize):
+class DeblurringNodeSize(desc.MultiDynamicNodeSize):
     def computeSize(self, node):
         input_path_param = node.attribute(self._params[0])
         extension_param = node.attribute(self._params[1])
@@ -32,14 +32,14 @@ class DepthEstimationBlockSize(desc.Parallelization):
         else:
             return size, size, 1
 
-class Debluring(desc.Node):
-    category = "Debluring"
+class Deblurring(desc.Node):
+    category = "Deblurring"
     documentation = """This node deblurs an image sequence.
                     The FMA-Net model deblurs each image using the previous and the next images in the sequence."""
     
     gpu = desc.Level.INTENSIVE
 
-    size = DebluringNodeSize(['imagesFolder', 'inputExtension'])
+    size = DeblurringNodeSize(['imagesFolder', 'inputExtension'])
     parallelization = DepthEstimationBlockSize()
 
     inputs = [
@@ -71,7 +71,6 @@ class Debluring(desc.Node):
             value=50,
             description="Sets the number of images to process in one chunk. If set to 0, all images are processed at once.",
             range=(0, 1000, 1),
-            enabled=lambda node: node.model.value == "MoGe"
         ),
         desc.ChoiceParam(
             name="verboseLevel",
@@ -86,12 +85,12 @@ class Debluring(desc.Node):
         desc.File(
             name='output',
             label='Output Folder',
-            description="Output folder containing the deblured images stored with the same extension as input images.",
+            description="Output folder containing the deblurred images stored with the same extension as input images.",
             value="{nodeCacheFolder}",
         ),
         desc.File(
-            name="deblured",
-            label="Deblured images",
+            name="deblurred",
+            label="Deblurred images",
             description="Images with reduced motion blur",
             semantic="imageList",
             value=lambda attr: "{nodeCacheFolder}/*."+attr.node.inputExtension.value,

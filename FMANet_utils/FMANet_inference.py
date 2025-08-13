@@ -5,6 +5,7 @@ import cv2
 import numpy as np
 
 from pathlib import Path
+from typing import List
 
 from FMANet.config import Config
 from FMANet.model import FMANet
@@ -12,11 +13,10 @@ from FMANet.model import FMANet
 from img_utils.image import loadImage, writeImage
 
 class Meshroom_Dataset:
-    def __init__(self, input_path, num_seq, ext, dim_max=640, start=0, stop=-1):
+    def __init__(self, frame_list, num_seq, ext, dim_max=640, start=0, stop=-1):
         self.num_seq = num_seq
-        bath_path = os.path.join(input_path)
         self.ext = ext
-        self.seq_path = self.get_seq_path(bath_path)
+        self.seq_path = self.get_seq_path(frame_list)
         if stop > start:
             self.seq_path = self.seq_path[start:stop].copy()
         self.num_data = len(self.seq_path)
@@ -45,9 +45,8 @@ class Meshroom_Dataset:
         x = torch.Tensor(x.transpose(ts).astype(float)).mul_(1.0)
         return x
 
-    def get_seq_path(self, bath_path):
+    def get_seq_path(self, frame_list):
         seq_list = []
-        frame_list = sorted(glob.glob(os.path.join(bath_path, '*.' + self.ext)))
         extSize = (self.num_seq - 1) // 2
         ext_list_start = frame_list[1:1+extSize].copy()
         ext_list_start.reverse()
@@ -55,13 +54,13 @@ class Meshroom_Dataset:
         ext_list_stop.reverse()
         ext_list_start.extend(frame_list)
         ext_list_start.extend(ext_list_stop)
-        frame_list = ext_list_start.copy()
+        extended_frame_list = ext_list_start.copy()
         start = (self.num_seq - 1) // 2
-        end = len(frame_list) - (self.num_seq - 1) // 2
+        end = len(extended_frame_list) - (self.num_seq - 1) // 2
         for i in range(start, end):
             frame_seq = []
             for seq_num in range(self.num_seq):
-                frame_seq.append(frame_list[i + seq_num - start])
+                frame_seq.append(extended_frame_list[i + seq_num - start])
             seq_list.append(frame_seq)
         return seq_list
 
@@ -76,7 +75,7 @@ class Meshroom_Dataset:
 
 
 def FMANet_inference(
-    inPath: str,
+    frameList: List[str],
     ext: str,
     checkpoint_path: str,
     outPath: str,
@@ -91,7 +90,7 @@ def FMANet_inference(
     if not os.path.exists(outPath):
         Path(outPath).mkdir(parents=True, exist_ok=True)
 
-    data = Meshroom_Dataset(inPath, num_seq, ext, maxDim, start, stop)
+    data = Meshroom_Dataset(frameList, num_seq, ext, maxDim, start, stop)
     test_dataloader = torch.utils.data.DataLoader(data, batch_size=1, drop_last=False, shuffle=False, num_workers=int(nThreads), pin_memory=True)
     config = Config(config_path)
     model = FMANet(config=config)

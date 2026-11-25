@@ -39,21 +39,21 @@ class Deblurring(desc.Node):
     
     gpu = desc.Level.INTENSIVE
 
-    size = DeblurringNodeSize(['imagesFolder', 'inputExtension'])
+    size = DeblurringNodeSize(['inputImages', 'inputExtension'])
     parallelization = DepthEstimationBlockSize()
 
     inputs = [
         desc.File(
-            name="imagesFolder",
-            label="Images Folder",
-            description="Input images to deblur.",
+            name="inputImages",
+            label="Input Images",
+            description="Input image sequence to deblur. Image Folder or sfmData file.",
             value="",
         ),
         desc.ChoiceParam(
             name="inputExtension",
             label="Input Extension",
             description="Extension of the input images. This will be used to determine which images are to be used if \n"
-                        "a directory is provided as the input. If \"\" is selected, the provided input will be used as such.",
+                        "a directory is provided as the input.",
             values=["jpg", "jpeg", "png", "exr"],
             value="exr",
             exclusive=True,
@@ -92,8 +92,8 @@ class Deblurring(desc.Node):
             name="deblurred",
             label="Deblurred images",
             description="Images with reduced motion blur",
-            semantic="imageList",
-            value=lambda attr: "{nodeCacheFolder}/*."+attr.node.inputExtension.value,
+            semantic="image",
+            value=lambda attr: "{nodeCacheFolder}/<FILESTEM>."+attr.node.inputExtension.value,
             group="",
         ),
     ]
@@ -102,29 +102,33 @@ class Deblurring(desc.Node):
 
         try:
             chunk.logManager.start(chunk.node.verboseLevel.value)
-            if not chunk.node.imagesFolder.value:
-                chunk.logger.warning('No input folder given.')
+            if not chunk.node.inputImages.value:
+                chunk.logger.warning('No input images given.')
 
             # inference
 
             chunk.logger.info(f'Starting inference on chunk {chunk.range.iteration + 1}/{chunk.range.fullSize // chunk.range.blockSize + int(chunk.range.fullSize != chunk.range.blockSize)}...')
 
-            from FMANet_utils.FMANet_inference import FMANet_inference
+            frameList = get_image_paths_list(chunk.node.inputImages.value, chunk.node.inputExtension.value)
 
-            FMANet_inference(
-                inPath=chunk.node.imagesFolder.value,
-                ext=chunk.node.inputExtension.value,
-                checkpoint_path=FMANET_MODEL_PATH,
-                outPath=chunk.node.output.value,
-                maxDim=chunk.node.maxImageSize.value,
-                start=chunk.range.start,
-                stop=chunk.range.end)
+            if len(frameList) > 0:
+                from FMANet_utils.FMANet_inference import FMANet_inference
+                FMANet_inference(
+                    frameList=frameList,
+                    ext=chunk.node.inputExtension.value,
+                    checkpoint_path=FMANET_MODEL_PATH,
+                    outPath=chunk.node.output.value,
+                    maxDim=chunk.node.maxImageSize.value,
+                    start=chunk.range.start,
+                    stop=chunk.range.end)
             
             chunk.logger.info('Publish end')
         finally:
             chunk.logManager.end()
 
 def get_image_paths_list(input_path, extension):
+    from pyalicevision import sfmData
+    from pyalicevision import sfmDataIO
     from pathlib import Path
     import itertools
 
@@ -133,6 +137,14 @@ def get_image_paths_list(input_path, extension):
 
     if Path(input_path).is_dir():
         image_paths = sorted(itertools.chain(*(Path(input_path).glob(f'*.{suffix}') for suffix in include_suffices)))
+    elif input_path[-4:].lower() == ".sfm" or input_path[-4:].lower() == ".abc":
+        if Path(input_path).exists():
+            dataAV = sfmData.SfMData()
+            if sfmDataIO.load(dataAV, input_path, sfmDataIO.ALL):
+                views = dataAV.getViews()
+                for id, v in views.items():
+                    image_paths.append(str(Path(v.getImage().getImagePath())))
+            image_paths.sort()
     else:
         raise ValueError(f"Input path '{input_path}' is not a directory.")
     return image_paths
